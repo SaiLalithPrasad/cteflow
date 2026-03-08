@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cteflow"
+version = "0.1.0"
+description = "Instantly visualize SQL CTE data flows as interactive, self-contained HTML graphs"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+dependencies = [
+    "sqlglot>=26.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["cteflow*"]
+
+[project.scripts]
+cteflow = "cteflow.cli:main"
