@@ -42,7 +42,7 @@ def main():
     print(f"  CTEs: {', '.join(cte_names)}")
     print(f"  Sources: {', '.join(sources)}")
 
-    output_html = generate_html(graph, sql_file.name)
+    output_html = generate_html(graph, sql_file.name, raw_sql=sql)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
     output_file = OUTPUT_DIR / (sql_file.stem + "_flow.html")

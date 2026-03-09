@@ -51,10 +51,52 @@
   .toggle-btn:hover { background: rgba(255,255,255,0.08); color: #ddd; border-color: rgba(255,255,255,0.18); }
   .toggle-btn svg { width: 14px; height: 14px; }
 
+  /* ---- SQL drawer (left, pushes viewport) ---- */
+  .sql-drawer {
+    position: fixed; top: 48px; left: 0; bottom: 0;
+    width: 0; overflow: hidden;
+    z-index: 90; background: #111119;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    transition: width 0.35s cubic-bezier(0.16,1,0.3,1);
+    display: flex; flex-direction: column;
+  }
+  .sql-drawer.open { width: min(520px, 45vw); }
+  .sql-drawer-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .sql-drawer-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #888;
+  }
+  .sql-drawer-close {
+    margin-left: auto;
+    background: rgba(255,255,255,0.06);
+    border: none; color: #888; font-size: 18px;
+    width: 32px; height: 32px; border-radius: 8px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sql-drawer-close:hover { background: rgba(255,255,255,0.12); color: #eee; }
+  .sql-drawer-body {
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+  }
+  .sql-drawer-body .sql-block {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 16px 20px;
+    font-family: "SF Mono","Fira Code","Cascadia Code",monospace;
+    font-size: 12.5px; line-height: 1.65; color: #c9d1d9;
+    white-space: pre-wrap; word-break: break-word; tab-size: 2;
+  }
+
   /* ---- viewport ---- */
   .viewport {
     position: absolute; top: 48px; left: 0; right: 0; bottom: 0;
     overflow: auto; cursor: grab;
+    transition: left 0.35s cubic-bezier(0.16,1,0.3,1);
   }
   .viewport:active { cursor: grabbing; }
   .canvas {
@@ -335,6 +377,13 @@
       <span><span class="legend-dot" style="background:#60a5fa;"></span>CTE</span>
       <span><span class="legend-dot" style="background:#fb923c;"></span>Final</span>
     </div>
+    <button class="toggle-btn" id="toggleSQL" title="Show full SQL query">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px">
+        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      </svg>
+      <span>SQL</span>
+    </button>
     <button class="toggle-btn" id="toggleDir" title="Toggle layout direction">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" id="toggleIcon">
@@ -342,6 +391,16 @@
       </svg>
       <span id="toggleLabel">Top-Down</span>
     </button>
+  </div>
+</div>
+
+<div class="sql-drawer" id="sqlDrawer">
+  <div class="sql-drawer-header">
+    <span class="sql-drawer-title">Full Query</span>
+    <button class="sql-drawer-close" id="sqlDrawerClose">&times;</button>
+  </div>
+  <div class="sql-drawer-body">
+    <div class="sql-block" id="sqlDrawerContent"></div>
   </div>
 </div>
 
@@ -745,6 +804,21 @@ function closePanel() {
 panelOverlay.addEventListener('click', closePanel);
 document.getElementById('panelClose').addEventListener('click', closePanel);
 document.addEventListener('keydown', e => { if (e.key==='Escape') closePanel(); });
+
+// ===================== SQL DRAWER =====================
+const RAW_SQL = "-- E-commerce analytics pipeline: customer lifetime value, cohort analysis,\n-- product affinity, fraud scoring, and executive dashboard metrics.\n-- Targets Snowflake but uses broadly compatible SQL.\n\nWITH raw_orders AS (\n    SELECT\n        o.order_id,\n        o.customer_id,\n        o.order_date,\n        o.status,\n        o.channel,\n        o.shipping_country,\n        o.discount_code,\n        o.total_amount,\n        o.tax_amount,\n        o.shipping_cost,\n        o.created_at,\n        DATEDIFF('day', o.created_at, o.order_date) AS processing_lag_days\n    FROM warehouse.orders o\n    WHERE o.order_date >= '2023-01-01'\n      AND o.status NOT IN ('test', 'internal', 'cancelled_before_payment')\n),\n\norder_items AS (\n    SELECT\n        oi.order_id,\n        oi.product_id,\n        oi.quantity,\n        oi.unit_price,\n        oi.discount_amount,\n        oi.quantity * oi.unit_price - oi.discount_amount AS net_line_total,\n        p.category_l1,\n        p.category_l2,\n        p.brand,\n        p.supplier_id,\n        p.cost_price,\n        (oi.quantity * oi.unit_price - oi.discount_amount)\n            - (oi.quantity * p.cost_price) AS gross_margin\n    FROM warehouse.order_items oi\n    JOIN warehouse.products p ON oi.product_id = p.product_id\n),\n\nenriched_orders AS (\n    SELECT\n        ro.*,\n        COUNT(oi.product_id)          AS item_count,\n        SUM(oi.net_line_total)         AS net_revenue,\n        SUM(oi.gross_margin)           AS total_margin,\n        SUM(oi.quantity)               AS total_units,\n        COUNT(DISTINCT oi.category_l1) AS distinct_categories,\n        ARRAY_AGG(DISTINCT oi.category_l1) AS categories_purchased\n    FROM raw_orders ro\n    JOIN order_items oi ON ro.order_id = oi.order_id\n    GROUP BY ro.order_id, ro.customer_id, ro.order_date, ro.status,\n             ro.channel, ro.shipping_country, ro.discount_code,\n             ro.total_amount, ro.tax_amount, ro.shipping_cost,\n             ro.created_at, ro.processing_lag_days\n),\n\ncustomer_first_order AS (\n    SELECT\n        customer_id,\n        MIN(order_date)                       AS first_order_date,\n        DATE_TRUNC('month', MIN(order_date))  AS cohort_month,\n        MIN(channel)                          AS acquisition_channel\n    FROM enriched_orders\n    GROUP BY customer_id\n),\n\ncustomer_order_sequences AS (\n    SELECT\n        eo.customer_id,\n        eo.order_id,\n        eo.order_date,\n        eo.net_revenue,\n        eo.total_margin,\n        eo.channel,\n        cfo.first_order_date,\n        cfo.cohort_month,\n        cfo.acquisition_channel,\n        ROW_NUMBER() OVER (PARTITION BY eo.customer_id ORDER BY eo.order_date) AS order_seq,\n        DATEDIFF('day', cfo.first_order_date, eo.order_date)                  AS days_since_first,\n        LAG(eo.order_date) OVER (PARTITION BY eo.customer_id ORDER BY eo.order_date) AS prev_order_date,\n        DATEDIFF('day',\n            LAG(eo.order_date) OVER (PARTITION BY eo.customer_id ORDER BY eo.order_date),\n            eo.order_date\n        ) AS days_between_orders\n    FROM enriched_orders eo\n    JOIN customer_first_order cfo ON eo.customer_id = cfo.customer_id\n),\n\ncustomer_lifetime_stats AS (\n    SELECT\n        customer_id,\n        cohort_month,\n        acquisition_channel,\n        COUNT(*)                                     AS lifetime_orders,\n        SUM(net_revenue)                             AS lifetime_revenue,\n        SUM(total_margin)                            AS lifetime_margin,\n        AVG(net_revenue)                             AS avg_order_value,\n        MAX(order_date)                              AS last_order_date,\n        DATEDIFF('day', MIN(order_date), MAX(order_date)) AS customer_tenure_days,\n        AVG(days_between_orders)                     AS avg_days_between_orders,\n        STDDEV(days_between_orders)                  AS stddev_days_between\n    FROM customer_order_sequences\n    GROUP BY customer_id, cohort_month, acquisition_channel\n),\n\ncustomer_segments AS (\n    SELECT\n        cls.*,\n        c.email,\n        c.name             AS customer_name,\n        c.country           AS customer_country,\n        c.signup_date,\n        CASE\n            WHEN lifetime_orders >= 10 AND lifetime_revenue >= 5000 THEN 'vip'\n            WHEN lifetime_orders >= 5  AND lifetime_revenue >= 1500 THEN 'loyal'\n            WHEN lifetime_orders >= 2  AND lifetime_revenue >= 300  THEN 'active'\n            WHEN lifetime_orders = 1                                THEN 'one_time'\n            ELSE 'low_value'\n        END AS customer_segment,\n        CASE\n            WHEN DATEDIFF('day', last_order_date, CURRENT_DATE()) <= 30  THEN 'hot'\n            WHEN DATEDIFF('day', last_order_date, CURRENT_DATE()) <= 90  THEN 'warm'\n            WHEN DATEDIFF('day', last_order_date, CURRENT_DATE()) <= 180 THEN 'cooling'\n            ELSE 'churned'\n        END AS recency_tier,\n        NTILE(10) OVER (ORDER BY lifetime_revenue DESC) AS revenue_decile\n    FROM customer_lifetime_stats cls\n    JOIN warehouse.customers c ON cls.customer_id = c.customer_id\n),\n\ncohort_retention AS (\n    SELECT\n        cfo.cohort_month,\n        DATE_TRUNC('month', eo.order_date)                              AS activity_month,\n        DATEDIFF('month', cfo.cohort_month, DATE_TRUNC('month', eo.order_date)) AS months_since_cohort,\n        COUNT(DISTINCT eo.customer_id)                                   AS active_customers,\n        SUM(eo.net_revenue)                                              AS cohort_revenue\n    FROM enriched_orders eo\n    JOIN customer_first_order cfo ON eo.customer_id = cfo.customer_id\n    GROUP BY cfo.cohort_month, DATE_TRUNC('month', eo.order_date),\n             DATEDIFF('month', cfo.cohort_month, DATE_TRUNC('month', eo.order_date))\n),\n\ncohort_sizes AS (\n    SELECT\n        cohort_month,\n        COUNT(DISTINCT customer_id) AS cohort_size\n    FROM customer_first_order\n    GROUP BY cohort_month\n),\n\ncohort_retention_rates AS (\n    SELECT\n        cr.cohort_month,\n        cr.activity_month,\n        cr.months_since_cohort,\n        cr.active_customers,\n        cr.cohort_revenue,\n        cs.cohort_size,\n        ROUND(cr.active_customers * 100.0 / cs.cohort_size, 2) AS retention_pct,\n        ROUND(cr.cohort_revenue / cr.active_customers, 2)       AS revenue_per_active\n    FROM cohort_retention cr\n    JOIN cohort_sizes cs ON cr.cohort_month = cs.cohort_month\n),\n\nproduct_affinity_pairs AS (\n    SELECT\n        a.product_id   AS product_a,\n        b.product_id   AS product_b,\n        a.category_l1  AS category_a,\n        b.category_l1  AS category_b,\n        COUNT(DISTINCT a.order_id)                         AS co_occurrence_count,\n        COUNT(DISTINCT a.order_id) * 1.0\n            / COUNT(DISTINCT a.order_id) OVER (PARTITION BY a.product_id) AS confidence_a_to_b\n    FROM order_items a\n    JOIN order_items b\n        ON a.order_id = b.order_id\n        AND a.product_id < b.product_id\n    GROUP BY a.product_id, b.product_id, a.category_l1, b.category_l1\n    HAVING COUNT(DISTINCT a.order_id) >= 5\n),\n\ntop_product_pairs AS (\n    SELECT\n        pap.*,\n        pa.brand AS brand_a,\n        pb.brand AS brand_b,\n        ROW_NUMBER() OVER (\n            PARTITION BY pap.category_a\n            ORDER BY pap.co_occurrence_count DESC\n        ) AS rank_in_category\n    FROM product_affinity_pairs pap\n    JOIN warehouse.products pa ON pap.product_a = pa.product_id\n    JOIN warehouse.products pb ON pap.product_b = pb.product_id\n    WHERE pap.confidence_a_to_b >= 0.05\n),\n\nsupplier_performance AS (\n    SELECT\n        oi.supplier_id,\n        s.supplier_name,\n        s.region AS supplier_region,\n        COUNT(DISTINCT oi.order_id)                AS orders_fulfilled,\n        SUM(oi.quantity)                            AS total_units_sold,\n        SUM(oi.net_line_total)                      AS total_revenue,\n        SUM(oi.gross_margin)                        AS total_margin,\n        ROUND(SUM(oi.gross_margin) * 100.0\n              / NULLIF(SUM(oi.net_line_total), 0), 2) AS margin_pct,\n        AVG(oi.gross_margin / NULLIF(oi.net_line_total, 0)) AS avg_item_margin_pct,\n        COUNT(DISTINCT oi.product_id)              AS products_sold,\n        COUNT(DISTINCT CASE WHEN ro.status = 'returned' THEN ro.order_id END) AS return_orders,\n        ROUND(COUNT(DISTINCT CASE WHEN ro.status = 'returned' THEN ro.order_id END) * 100.0\n              / NULLIF(COUNT(DISTINCT oi.order_id), 0), 2) AS return_rate_pct\n    FROM order_items oi\n    JOIN raw_orders ro ON oi.order_id = ro.order_id\n    JOIN warehouse.suppliers s ON oi.supplier_id = s.supplier_id\n    GROUP BY oi.supplier_id, s.supplier_name, s.region\n),\n\nfraud_risk_signals AS (\n    SELECT\n        eo.order_id,\n        eo.customer_id,\n        eo.order_date,\n        eo.net_revenue,\n        eo.channel,\n        eo.shipping_country,\n        cs.customer_segment,\n        cs.recency_tier,\n        cs.avg_order_value  AS customer_avg_order_value,\n        -- Signal: order value deviation\n        CASE\n            WHEN eo.net_revenue > cs.avg_order_value * 3 THEN 3\n            WHEN eo.net_revenue > cs.avg_order_value * 2 THEN 2\n            ELSE 0\n        END AS value_deviation_score,\n        -- Signal: shipping country mismatch\n        CASE\n            WHEN eo.shipping_country != cs.customer_country THEN 2\n            ELSE 0\n        END AS geo_mismatch_score,\n        -- Signal: new customer + high value\n        CASE\n            WHEN cs.customer_segment = 'one_time' AND eo.net_revenue > 500 THEN 3\n            ELSE 0\n        END AS new_high_value_score,\n        -- Signal: rapid repeat ordering\n        CASE\n            WHEN cos.days_between_orders IS NOT NULL\n                 AND cos.days_between_orders < 1\n                 AND eo.net_revenue > 200 THEN 3\n            ELSE 0\n        END AS rapid_repeat_score,\n        eo.discount_code\n    FROM enriched_orders eo\n    JOIN customer_segments cs ON eo.customer_id = cs.customer_id\n    LEFT JOIN customer_order_sequences cos\n        ON eo.order_id = cos.order_id\n),\n\nfraud_scored_orders AS (\n    SELECT\n        frs.*,\n        -- Signal: heavy discount abuse\n        CASE\n            WHEN frs.discount_code IS NOT NULL\n                 AND frs.net_revenue > frs.customer_avg_order_value * 1.5 THEN 2\n            ELSE 0\n        END AS discount_abuse_score,\n        (frs.value_deviation_score\n         + frs.geo_mismatch_score\n         + frs.new_high_value_score\n         + frs.rapid_repeat_score\n         + CASE\n             WHEN frs.discount_code IS NOT NULL\n                  AND frs.net_revenue > frs.customer_avg_order_value * 1.5 THEN 2\n             ELSE 0\n           END\n        ) AS total_risk_score,\n        CASE\n            WHEN (frs.value_deviation_score + frs.geo_mismatch_score\n                  + frs.new_high_value_score + frs.rapid_repeat_score\n                  + CASE WHEN frs.discount_code IS NOT NULL\n                              AND frs.net_revenue > frs.customer_avg_order_value * 1.5\n                         THEN 2 ELSE 0 END) >= 6 THEN 'high'\n            WHEN (frs.value_deviation_score + frs.geo_mismatch_score\n                  + frs.new_high_value_score + frs.rapid_repeat_score\n                  + CASE WHEN frs.discount_code IS NOT NULL\n                              AND frs.net_revenue > frs.customer_avg_order_value * 1.5\n                         THEN 2 ELSE 0 END) >= 3 THEN 'medium'\n            ELSE 'low'\n        END AS risk_tier\n    FROM fraud_risk_signals frs\n),\n\nmonthly_exec_summary AS (\n    SELECT\n        DATE_TRUNC('month', eo.order_date)            AS report_month,\n        COUNT(DISTINCT eo.order_id)                     AS total_orders,\n        COUNT(DISTINCT eo.customer_id)                  AS unique_customers,\n        COUNT(DISTINCT CASE WHEN cos.order_seq = 1\n                            THEN eo.customer_id END)    AS new_customers,\n        SUM(eo.net_revenue)                             AS gross_revenue,\n        SUM(eo.total_margin)                            AS gross_margin,\n        ROUND(SUM(eo.total_margin) * 100.0\n              / NULLIF(SUM(eo.net_revenue), 0), 2)     AS margin_pct,\n        AVG(eo.net_revenue)                             AS avg_order_value,\n        SUM(CASE WHEN fso.risk_tier = 'high'\n                 THEN eo.net_revenue ELSE 0 END)        AS flagged_revenue,\n        COUNT(DISTINCT CASE WHEN fso.risk_tier = 'high'\n                            THEN eo.order_id END)       AS flagged_orders,\n        COUNT(DISTINCT eo.channel)                      AS channels_active,\n        SUM(eo.total_units)                             AS total_units_shipped\n    FROM enriched_orders eo\n    JOIN customer_order_sequences cos ON eo.order_id = cos.order_id\n    LEFT JOIN fraud_scored_orders fso ON eo.order_id = fso.order_id\n    GROUP BY DATE_TRUNC('month', eo.order_date)\n)\n\nSELECT\n    mes.report_month,\n    mes.total_orders,\n    mes.unique_customers,\n    mes.new_customers,\n    mes.gross_revenue,\n    mes.gross_margin,\n    mes.margin_pct,\n    mes.avg_order_value,\n    mes.flagged_revenue,\n    mes.flagged_orders,\n    mes.total_units_shipped,\n    crr.retention_pct          AS cohort_m1_retention,\n    crr.revenue_per_active     AS cohort_m1_rev_per_active\nFROM monthly_exec_summary mes\nLEFT JOIN cohort_retention_rates crr\n    ON crr.cohort_month = mes.report_month\n    AND crr.months_since_cohort = 1\nORDER BY mes.report_month DESC\n";
+const sqlDrawer = document.getElementById('sqlDrawer');
+const viewport = document.getElementById('viewport');
+function toggleSQLDrawer(forceOpen) {
+  const isOpen = typeof forceOpen === 'boolean' ? (forceOpen ? sqlDrawer.classList.add('open') || true : sqlDrawer.classList.remove('open') || false) : sqlDrawer.classList.toggle('open');
+  const drawerOpen = sqlDrawer.classList.contains('open');
+  viewport.style.left = drawerOpen ? 'min(520px, 45vw)' : '0';
+  if (drawerOpen) {
+    document.getElementById('sqlDrawerContent').innerHTML = highlightSQL(RAW_SQL);
+  }
+}
+document.getElementById('toggleSQL').addEventListener('click', () => toggleSQLDrawer());
+document.getElementById('sqlDrawerClose').addEventListener('click', () => toggleSQLDrawer(false));
 
 // ===================== SQL HIGHLIGHTING =====================
 function highlightSQL(sql) {

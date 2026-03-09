@@ -63,10 +63,52 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
   .toggle-btn:hover { background: rgba(255,255,255,0.08); color: #ddd; border-color: rgba(255,255,255,0.18); }
   .toggle-btn svg { width: 14px; height: 14px; }
 
+  /* ---- SQL drawer (left, pushes viewport) ---- */
+  .sql-drawer {
+    position: fixed; top: 48px; left: 0; bottom: 0;
+    width: 0; overflow: hidden;
+    z-index: 90; background: #111119;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    transition: width 0.35s cubic-bezier(0.16,1,0.3,1);
+    display: flex; flex-direction: column;
+  }
+  .sql-drawer.open { width: min(520px, 45vw); }
+  .sql-drawer-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    display: flex; align-items: center; gap: 10px;
+    flex-shrink: 0;
+  }
+  .sql-drawer-title {
+    font-size: 13px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #888;
+  }
+  .sql-drawer-close {
+    margin-left: auto;
+    background: rgba(255,255,255,0.06);
+    border: none; color: #888; font-size: 18px;
+    width: 32px; height: 32px; border-radius: 8px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sql-drawer-close:hover { background: rgba(255,255,255,0.12); color: #eee; }
+  .sql-drawer-body {
+    flex: 1; overflow-y: auto; padding: 16px 20px;
+  }
+  .sql-drawer-body .sql-block {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px; padding: 16px 20px;
+    font-family: "SF Mono","Fira Code","Cascadia Code",monospace;
+    font-size: 12.5px; line-height: 1.65; color: #c9d1d9;
+    white-space: pre-wrap; word-break: break-word; tab-size: 2;
+  }
+
   /* ---- viewport ---- */
   .viewport {
     position: absolute; top: 48px; left: 0; right: 0; bottom: 0;
     overflow: auto; cursor: grab;
+    transition: left 0.35s cubic-bezier(0.16,1,0.3,1);
   }
   .viewport:active { cursor: grabbing; }
   .canvas {
@@ -347,6 +389,13 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
       <span><span class="legend-dot" style="background:#60a5fa;"></span>CTE</span>
       <span><span class="legend-dot" style="background:#fb923c;"></span>Final</span>
     </div>
+    <button class="toggle-btn" id="toggleSQL" title="Show full SQL query">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px">
+        <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+      </svg>
+      <span>SQL</span>
+    </button>
     <button class="toggle-btn" id="toggleDir" title="Toggle layout direction">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
            stroke-linecap="round" stroke-linejoin="round" id="toggleIcon">
@@ -354,6 +403,16 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
       </svg>
       <span id="toggleLabel">Top-Down</span>
     </button>
+  </div>
+</div>
+
+<div class="sql-drawer" id="sqlDrawer">
+  <div class="sql-drawer-header">
+    <span class="sql-drawer-title">Full Query</span>
+    <button class="sql-drawer-close" id="sqlDrawerClose">&times;</button>
+  </div>
+  <div class="sql-drawer-body">
+    <div class="sql-block" id="sqlDrawerContent"></div>
   </div>
 </div>
 
@@ -758,6 +817,21 @@ panelOverlay.addEventListener('click', closePanel);
 document.getElementById('panelClose').addEventListener('click', closePanel);
 document.addEventListener('keydown', e => { if (e.key==='Escape') closePanel(); });
 
+// ===================== SQL DRAWER =====================
+const RAW_SQL = %%RAW_SQL%%;
+const sqlDrawer = document.getElementById('sqlDrawer');
+const viewport = document.getElementById('viewport');
+function toggleSQLDrawer(forceOpen) {
+  const isOpen = typeof forceOpen === 'boolean' ? (forceOpen ? sqlDrawer.classList.add('open') || true : sqlDrawer.classList.remove('open') || false) : sqlDrawer.classList.toggle('open');
+  const drawerOpen = sqlDrawer.classList.contains('open');
+  viewport.style.left = drawerOpen ? 'min(520px, 45vw)' : '0';
+  if (drawerOpen) {
+    document.getElementById('sqlDrawerContent').innerHTML = highlightSQL(RAW_SQL);
+  }
+}
+document.getElementById('toggleSQL').addEventListener('click', () => toggleSQLDrawer());
+document.getElementById('sqlDrawerClose').addEventListener('click', () => toggleSQLDrawer(false));
+
 // ===================== SQL HIGHLIGHTING =====================
 function highlightSQL(sql) {
   let s = sql.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -796,11 +870,12 @@ requestAnimationFrame(() => {
 </html>"""
 
 
-def generate_html(graph: dict, filename: str) -> str:
+def generate_html(graph: dict, filename: str, raw_sql: str = "") -> str:
     graph_json = json.dumps(graph)
     out = _HTML_TEMPLATE
     out = out.replace("%%FILENAME%%", html_mod.escape(filename))
     out = out.replace("%%GRAPH_JSON%%", graph_json)
+    out = out.replace("%%RAW_SQL%%", json.dumps(raw_sql))
     return out
 
 
