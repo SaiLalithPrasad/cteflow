@@ -1,5 +1,7 @@
 # cteflow
 
+![cteflow demo](cteflow.gif)
+
 Visualize SQL CTE data flows as interactive, self-contained HTML graphs. Runs entirely locally — no cloud services, no data leaves your machine.
 
 ## Quick Start
