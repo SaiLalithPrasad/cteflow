@@ -338,7 +338,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <body>
 
 <div class="header">
-  <span class="header-brand">SQL Flow Viz</span>
+  <span class="header-brand">CTE Flow</span>
   <span class="header-sep">|</span>
   <span class="header-file">%%FILENAME%%</span>
   <div class="header-controls">
